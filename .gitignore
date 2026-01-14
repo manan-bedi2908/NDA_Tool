@@ -1,0 +1,5 @@
+.streamlit
+.streamlit/secrets.toml
+NDA.pdf
+redlined_nda.docx
+__pycache__/
