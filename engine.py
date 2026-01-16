@@ -4,6 +4,8 @@ from docx import Document
 from docx.shared import RGBColor
 from difflib import SequenceMatcher
 from datetime import datetime
+import io
+
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # ---------------- Project Management ---------------- #
@@ -21,7 +23,8 @@ def create_project(name, description=""):
         "name": name,
         "description": description,
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "data": None,
+        "iterations": [],  # List of iterations
+        "current_iteration": None,
         "status": "new"
     }
     return project_id
@@ -34,11 +37,64 @@ def get_project(project_id):
     init_projects()
     return st.session_state["projects"].get(project_id)
 
-def update_project_data(project_id, data):
+def create_iteration(project_id, docA_name, docB_name, docA_bytes, docB_bytes):
+    """Create a new iteration within a project"""
     init_projects()
     if project_id in st.session_state["projects"]:
-        st.session_state["projects"][project_id]["data"] = data
-        st.session_state["projects"][project_id]["status"] = "analyzed"
+        project = st.session_state["projects"][project_id]
+        iteration_num = len(project["iterations"]) + 1
+        iteration_id = f"iter_{iteration_num}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        
+        iteration = {
+            "id": iteration_id,
+            "iteration_number": iteration_num,
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "docA_name": docA_name,
+            "docB_name": docB_name,
+            "docA_bytes": docA_bytes,
+            "docB_bytes": docB_bytes,
+            "data": None,
+        }
+        
+        project["iterations"].append(iteration)
+        project["current_iteration"] = iteration_id
+        project["status"] = "active"
+        
+        return iteration_id
+
+def get_current_iteration(project_id):
+    """Get the current iteration for a project"""
+    project = get_project(project_id)
+    if project and project["current_iteration"]:
+        for iteration in project["iterations"]:
+            if iteration["id"] == project["current_iteration"]:
+                return iteration
+    return None
+
+def get_iteration_by_id(project_id, iteration_id):
+    """Get a specific iteration by ID"""
+    project = get_project(project_id)
+    if project:
+        for iteration in project["iterations"]:
+            if iteration["id"] == iteration_id:
+                return iteration
+    return None
+
+def set_current_iteration(project_id, iteration_id):
+    """Set the current iteration for a project"""
+    init_projects()
+    if project_id in st.session_state["projects"]:
+        st.session_state["projects"][project_id]["current_iteration"] = iteration_id
+
+def update_iteration_data(project_id, iteration_id, data):
+    """Update analysis data for an iteration"""
+    init_projects()
+    if project_id in st.session_state["projects"]:
+        project = st.session_state["projects"][project_id]
+        for iteration in project["iterations"]:
+            if iteration["id"] == iteration_id:
+                iteration["data"] = data
+                break
 
 def delete_project(project_id):
     init_projects()
@@ -53,6 +109,84 @@ def set_current_project(project_id):
 def get_current_project():
     return st.session_state.get("current_project")
 
+def compare_iterations(project_id, iter_ids):
+    """Compare multiple iterations to show what changed in documents"""
+    project = get_project(project_id)
+    iterations = []
+    
+    for iter_id in iter_ids:
+        iteration = get_iteration_by_id(project_id, iter_id)
+        if iteration:
+            iterations.append(iteration)
+    
+    if len(iterations) < 2:
+        return None
+    
+    comparison = {
+        "iterations": []
+    }
+    
+    # Get basic info for each iteration
+    for iteration in iterations:
+        iter_info = {
+            "number": iteration["iteration_number"],
+            "date": iteration["created_at"],
+            "docs": f"{iteration['docA_name']} vs {iteration['docB_name']}",
+            "id": iteration["id"]
+        }
+        
+        if iteration["data"]:
+            df = iteration["data"]["df"]
+            if not df.empty and 'status' in df.columns:
+                iter_info["stats"] = {
+                    "total": len(df),
+                    "accepted": len(df[df['status'] == 'accepted']),
+                    "rejected": len(df[df['status'] == 'rejected']),
+                    "pending": len(df[df['status'] == 'pending'])
+                }
+        
+        comparison["iterations"].append(iter_info)
+    
+    # Generate AI comparison of document changes
+    comparison["document_changes"] = []
+    
+    for i in range(len(iterations) - 1):
+        iter1 = iterations[i]
+        iter2 = iterations[i + 1]
+        
+        if iter1["data"] and iter2["data"]:
+            # Get the full text from both iterations
+            text1 = iter1["data"]["B"][:5000]  # Client NDA from iteration 1
+            text2 = iter2["data"]["B"][:5000]  # Client NDA from iteration 2
+            
+            # Ask AI to explain what changed
+            changes = llm(f"""
+Compare these two versions of a client NDA and explain what changed.
+Focus on CONTENT changes made by the client, not status changes.
+
+VERSION {iter1['iteration_number']} (Client NDA):
+{text1}
+
+VERSION {iter2['iteration_number']} (Client NDA):
+{text2}
+
+List the key differences in a clear, concise way. Focus on:
+1. New clauses added
+2. Clauses removed
+3. Significant modifications to existing clauses
+4. Changes in terms, dates, amounts, or conditions
+
+Format as bullet points. Be specific about what changed.
+""")
+            
+            comparison["document_changes"].append({
+                "from": iter1["iteration_number"],
+                "to": iter2["iteration_number"],
+                "changes": changes
+            })
+    
+    return comparison
+
 # ---------------- PDF ---------------- #
 def extract_pages(pdf):
     pages = []
@@ -66,8 +200,9 @@ def full_text(pages):
 
 # ---------------- LLM ---------------- #
 def llm(prompt):
+    # Using gpt-4o-mini - the cheapest model for testing
     return client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",  # Cheapest model: ~$0.15 per 1M input tokens
         messages=[{"role":"user","content":prompt}],
         temperature=0
     ).choices[0].message.content
