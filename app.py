@@ -2,7 +2,7 @@ import streamlit as st
 
 # 1. THIS MUST BE THE ABSOLUTE FIRST STREAMLIT COMMAND
 st.set_page_config(
-    page_title="Artiaz | NDA AI", 
+    page_title="NDA AI Analyzer", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
@@ -27,7 +27,7 @@ def check_auth():
             return True
         
         # Show Login/Signup UI if no session is found
-        st.title("⚖️ Artiaz Legal AI")
+        st.title("⚖️ Legal AI")
         tab1, tab2 = st.tabs(["Login", "Create Account"])
         
         with tab1:
@@ -61,7 +61,7 @@ def main():
 
     # --- SIDEBAR: PROJECT NAVIGATION ---
     with st.sidebar:
-        st.title("📂 Artiaz Projects")
+        st.title("📂 NDA Analyzer")
         st.write(f"User: **{user.email}**")
         
         if st.button("Logout"):
