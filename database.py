@@ -286,24 +286,12 @@ def save_clauses(iteration_id: str, clauses_df: pd.DataFrame):
         st.error(f"Error saving clauses: {e}")
         return False
 
-def get_clauses(iteration_id: str):
-    """Get all clauses for an iteration"""
-    try:
-        response = supabase.table('clauses')\
-            .select('*')\
-            .eq('iteration_id', iteration_id)\
-            .order('page', desc=False)\
-            .execute()
-        
-        if response.data:
-            df = pd.DataFrame(response.data)
-            # Rename columns to match expected format
-            df = df.rename(columns={'risk_level': 'risk'})
-            return df
-        return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Error fetching clauses: {e}")
-        return pd.DataFrame()
+def get_clauses(iteration_id):
+    import pandas as pd
+    # We MUST include 'id' here to identify the row during the save process
+    columns = "id, page, title, difference, legal_impact, risk_level, status, notes"
+    res = supabase.table("clauses").select(columns).eq("iteration_id", iteration_id).execute()
+    return pd.DataFrame(res.data)
 
 def update_clause(clause_id: str, **kwargs):
     """Update a single clause"""

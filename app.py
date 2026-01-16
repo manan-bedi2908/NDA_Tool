@@ -13,10 +13,9 @@ import io
 import database as db  # This calls st.secrets/st.session_state during import
 import engine         # This calls st.secrets during import
 
-# ... rest of your app.py code ...
-
 # --- AUTHENTICATION CHECK ---
 def check_auth():
+    """Checks if user is logged in via Supabase Auth"""
     if not db.is_authenticated():
         st.title("⚖️ Artiaz Legal AI")
         tab1, tab2 = st.tabs(["Login", "Create Account"])
@@ -69,7 +68,7 @@ def main():
 
         st.divider()
 
-        # Project List
+        # Project Selection List
         projects = db.get_all_projects()
         if not projects:
             st.info("No projects yet.")
@@ -86,7 +85,7 @@ def main():
         
         st.header(f"Project: {project['name']}")
         
-        # Iteration Tabs
+        # UI Organization via Tabs
         tab_new, tab_history, tab_compare = st.tabs(["🚀 New Analysis", "📜 Iteration History", "🔄 Version Comparison"])
 
         # TAB 1: NEW ANALYSIS
@@ -98,81 +97,102 @@ def main():
             
             if st.button("Analyze Documents", type="primary") and doc_a and doc_b:
                 with st.spinner("AI is analyzing legal risks..."):
-                    # This function now handles extraction, AI, and DB saving
+                    # Pipeline handles extraction, AI classification, and Supabase insertion
                     iter_id = engine.run_comparison_pipeline(pid, doc_a, doc_b)
-                    st.success("Analysis Complete!")
-                    st.session_state['active_iter_id'] = iter_id
-                    st.rerun()
+                    if iter_id:
+                        st.success("Analysis Complete!")
+                        # Store in session state so History tab can focus on it immediately
+                        st.session_state['active_iter_id'] = iter_id
+                        st.rerun()
 
-        # TAB 2: HISTORY & REVIEW
+        # TAB 2: HISTORY & REVIEW (FIXES KeyErrors and UnboundLocalErrors)
         with tab_history:
             iterations = db.get_iterations(pid)
             if not iterations:
-                st.info("No iterations yet.")
+                st.info("No iterations yet. Run a new analysis in the first tab.")
             else:
                 it_options = {f"v{it['iteration_number']} - {it['created_at'][:16]}": it['id'] for it in iterations}
-                selected_it = st.selectbox("Select Iteration to View", list(it_options.keys()))
-                active_it_id = it_options[selected_it]
                 
-                # Fetch fresh data from DB
-                it_data = db.get_iteration(active_it_id)
-                clauses = db.get_clauses(active_it_id)
+                # Automatically select the iteration just created, or the first one available
+                default_idx = 0
+                if 'active_iter_id' in st.session_state:
+                    for i, (label, it_id) in enumerate(it_options.items()):
+                        if it_id == st.session_state['active_iter_id']:
+                            default_idx = i
 
-                # Show Summary
+                selected_it_label = st.selectbox("Select Iteration to View", list(it_options.keys()), index=default_idx)
+                active_it_id = it_options[selected_it_label]
+                
+                # Fetch fresh data from DB using the ID retrieved from selectbox
+                it_data = db.get_iteration(active_it_id)
+                clauses_df = db.get_clauses(active_it_id)
+
+                # Show AI Summary
                 st.divider()
                 st.subheader("Executive Summary")
-                st.write(it_data['overall_comparison'])
+                st.info(it_data['overall_comparison'])
 
-                # Interactive Clause Table
+                # --- INTERACTIVE CLAUSE TABLE (FIXED) ---
                 st.subheader("Clause-by-Clause Review")
-                if not clauses.empty:
-                    # Use data_editor so users can edit 'status' and 'notes' directly
+                if not clauses_df.empty:
+                    # Fix KeyError: 'id' by keeping 'id' in the df but hiding it in the config
+                    # Fix Clutter by hiding technical columns
                     edited_df = st.data_editor(
-                        clauses,
+                        clauses_df,
                         column_config={
-                            "status": st.column_config.SelectboxColumn("Status", options=["pending", "accepted", "rejected"]),
-                            "risk": st.column_config.TextColumn("Risk", disabled=True),
-                            "difference": st.column_config.TextColumn("Difference", width="large", disabled=True),
-                            "id": None # Hide the ID column
+                            "id": None,  # Hides from UI but keeps it in data for row updates
+                            "status": st.column_config.SelectboxColumn(
+                                "Status",
+                                options=["pending", "accepted", "rejected"],
+                                required=True,
+                            ),
+                            "notes": st.column_config.TextColumn("Legal Notes", width="large"),
                         },
+                        disabled=["page", "title", "difference", "legal_impact", "risk_level"],
+                        use_container_width=True,
                         hide_index=True,
-                        use_container_width=True
+                        key=f"editor_{active_it_id}"
                     )
                     
                     if st.button("💾 Save All Review Changes"):
-                        for _, row in edited_df.iterrows():
-                            db.update_clause(row['id'], status=row['status'], notes=row['notes'])
-                        st.success("Changes saved to database!")
+                        with st.spinner("Saving changes to database..."):
+                            # This loop relies on 'id' being present in the edited_df
+                            for _, row in edited_df.iterrows():
+                                db.update_clause(row['id'], status=row['status'], notes=row['notes'])
+                            st.success("Changes saved successfully!")
+                            st.rerun()
 
-                # Email & Redline
-                st.divider()
-                ec1, ec2 = st.columns(2)
-                with ec1:
-                    st.subheader("📧 Draft Response")
-                    u_input = st.text_area("Specific instructions for AI?")
-                    if st.button("Generate Email"):
-                        email = engine.draft_email(u_input, it_data['overall_comparison'], edited_df)
-                        st.text_area("AI Draft", value=email, height=300)
-                
-                with ec2:
-                    st.subheader("📝 Export Redline")
-                    if st.button("Generate Word Redline"):
-                        path = "output_redline.docx"
-                        engine.generate_redline_doc(it_data['full_text_a'], it_data['full_text_b'], path)
-                        with open(path, "rb") as f:
-                            st.download_button("Download .docx", f, file_name=f"Redline_{selected_it}.docx")
+                    # Email & Redline Exports
+                    st.divider()
+                    ec1, ec2 = st.columns(2)
+                    with ec1:
+                        st.subheader("📧 Draft Response")
+                        u_input = st.text_area("Specific instructions for AI Draft?")
+                        if st.button("Generate Email"):
+                            # Passes edited_df to include human-made notes in the email prompt
+                            email = engine.draft_email(u_input, it_data['overall_comparison'], edited_df)
+                            st.text_area("AI Drafted Email", value=email, height=300)
+                    
+                    with ec2:
+                        st.subheader("📝 Export Redline")
+                        if st.button("Generate Word Document"):
+                            path = f"Redline_v{it_data['iteration_number']}.docx"
+                            engine.generate_redline_doc(it_data['full_text_a'], it_data['full_text_b'], path)
+                            with open(path, "rb") as f:
+                                st.download_button("Download Redlined .docx", f, file_name=path)
+                else:
+                    st.warning("No clauses detected for this analysis.")
 
         # TAB 3: COMPARISON
         with tab_compare:
-            st.subheader("Analyze Changes Between Client Versions")
-            iters = db.get_iterations(pid)
-            if len(iters) < 2:
+            st.subheader("Analyze Changes Between Iterations")
+            if len(iterations) < 2:
                 st.warning("You need at least two iterations to compare versions.")
             else:
                 selected_ids = st.multiselect(
-                    "Select versions to compare changes",
-                    options=[it['id'] for it in iters],
-                    format_func=lambda x: next(f"v{i['iteration_number']}" for i in iters if i['id'] == x)
+                    "Select versions to compare",
+                    options=[it['id'] for it in iterations],
+                    format_func=lambda x: next(f"v{i['iteration_number']}" for i in iterations if i['id'] == x)
                 )
                 if len(selected_ids) >= 2:
                     if st.button("Run Version-over-Version Analysis"):

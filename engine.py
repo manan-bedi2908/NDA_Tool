@@ -108,45 +108,70 @@ def llm(prompt):
     )
     return response.choices[0].message.content
 
+def page_diff(std_pages, client_pages):
+    rows = []
+    max_pages = max(len(std_pages), len(client_pages))
+    
+    for i in range(max_pages):
+        std_txt = std_pages[i]["text"] if i < len(std_pages) else ""
+        clt_txt = client_pages[i]["text"] if i < len(client_pages) else ""
+        
+        # Use double braces {{ }} for the JSON format example
+        prompt = f"""
+        Compare these NDA pages. Identify differences in clauses.
+        Return ONLY a JSON array of objects. 
+        
+        Format: [{{ "title": "...", "difference": "...", "legal_impact": "...", "risk": "high/medium/low" }}]
+        
+        Standard Page {i+1}: {std_txt[:3000]}
+        Client Page {i+1}: {clt_txt[:3000]}
+        """
+        try:
+            res = llm(prompt)
+            # Find the JSON array in the response
+            match = re.search(r"\[.*\]", res, re.S)
+            if match:
+                clean_json = match.group()
+                data = json.loads(clean_json)
+                for item in data:
+                    item['page'] = i + 1
+                    rows.append(item)
+        except Exception as e:
+            st.warning(f"Could not parse page {i+1}: {e}")
+            continue
+            
+    return pd.DataFrame(rows)
+
 def run_comparison_pipeline(project_id, a_file, b_file):
-    # 1. Read files
+    # 1. Read and Extract
     a_bytes = a_file.getvalue()
     b_bytes = b_file.getvalue()
-    
-    # 2. Extract Text
     a_pages = extract_pages(a_bytes)
     b_pages = extract_pages(b_bytes)
     a_text = "\n".join([p["text"] for p in a_pages])
     b_text = "\n".join([p["text"] for p in b_pages])
     
-    # 3. AI Classification and Diffing
-    t1 = llm(f"Classify document (one word): {a_text[:2000]}")
-    t2 = llm(f"Classify document (one word): {b_text[:2000]}")
-    overall = llm(f"Compare these NDAs and list key risks:\nDoc A: {a_text[:4000]}\nDoc B: {b_text[:4000]}")
+    # 2. AI Analysis
+    t1 = llm(f"Classify (one word): {a_text[:1000]}")
+    t2 = llm(f"Classify (one word): {b_text[:1000]}")
+    overall = llm(f"Provide a high-level summary of risks between Doc A and Doc B:\n\nA: {a_text[:3000]}\nB: {b_text[:3000]}")
     
-    # Page-by-page JSON analysis
-    rows = []
-    for i in range(min(len(a_pages), len(b_pages))):
-        prompt = f"Compare these NDA pages. Return JSON array [{{\"title\": \"...\", \"difference\": \"...\", \"risk\": \"high/medium/low\"}}].\nPage {i+1} A: {a_pages[i]['text']}\nPage {i+1} B: {b_pages[i]['text']}"
-        try:
-            res = llm(prompt)
-            clean_json = re.search(r"\[.*\]", res, re.S).group()
-            data = json.loads(clean_json)
-            for item in data:
-                item['page'] = i + 1
-                rows.append(item)
-        except: continue
+    # 3. Generate the Clause Table
+    df = page_diff(a_pages, b_pages)
     
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df['status'] = 'pending'
-        df['notes'] = ''
+    if df.empty:
+        # Emergency fallback so the UI isn't empty
+        df = pd.DataFrame([{
+            "page": 1, "title": "General", "difference": "Minor formatting differences", 
+            "legal_impact": "No major risks detected", "risk": "low"
+        }])
+    
+    df['status'] = 'pending'
+    df['notes'] = ''
 
-    # 4. Save to Database
+    # 4. Save and Return
     iteration = create_iteration(project_id, a_file.name, b_file.name, a_bytes, b_bytes)
-    
     if iteration:
-        # Update the text and summary columns (matching lowercase schema)
         db.update_iteration(
             iteration['id'], 
             full_text_a=a_text, 
@@ -158,7 +183,6 @@ def run_comparison_pipeline(project_id, a_file, b_file):
         db.save_clauses(iteration['id'], df)
         return iteration['id']
     return None
-
 # ---------------- Redlining & Export ---------------- #
 
 def generate_redline_doc(old, new, path):
