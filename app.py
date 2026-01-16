@@ -27,7 +27,7 @@ def check_auth():
             return True
         
         # Show Login/Signup UI if no session is found
-        st.title("⚖️ Legal AI")
+        st.title("⚖️ Bridgevalue Technology Services")
         tab1, tab2 = st.tabs(["Login", "Create Account"])
         
         with tab1:
