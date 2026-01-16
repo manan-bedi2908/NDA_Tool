@@ -7,3 +7,4 @@ numpy
 regex
 python-docx 
 difflib
+supabase
