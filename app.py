@@ -166,17 +166,23 @@ def main():
                 st.info(it_data['overall_comparison'])
 
                 # --- INTERACTIVE CLAUSE TABLE ---
+                # --- UPDATED INTERACTIVE CLAUSE TABLE ---
+                
                 st.subheader("Clause-by-Clause Review")
                 if not clauses_df.empty:
-                    # 'id' is hidden but kept in the dataframe to avoid KeyError on save
                     edited_df = st.data_editor(
                         clauses_df,
                         column_config={
-                            "id": None, # Hides primary key from user
+                            "id": None,
+                            "page": st.column_config.NumberColumn("Pg", width="small"),
+                            "title": st.column_config.TextColumn("Clause Title", width="medium"),
+                            "difference": st.column_config.TextColumn("Difference Identified", width="large"),
+                            "legal_impact": st.column_config.TextColumn("Legal Impact", width="large"),
+                            "risk_level": st.column_config.TextColumn("Risk", width="small"),
                             "status": st.column_config.SelectboxColumn(
                                 "Status",
                                 options=["pending", "accepted", "rejected"],
-                                required=True,
+                                width="small"
                             ),
                             "notes": st.column_config.TextColumn("Legal Notes", width="large"),
                         },
