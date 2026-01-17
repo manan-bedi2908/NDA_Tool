@@ -14,44 +14,53 @@ import database as db  # Handles Supabase connection and secrets
 import engine         # Handles PDF processing and AI logic
 
 # --- AUTHENTICATION CHECK (REVISED FOR PERSISTENCE) ---
+# --- AUTHENTICATION CHECK (FIXED) ---
 def check_auth():
     """Ensures user stays logged in across refreshes"""
-    # Initialize the session flag if it doesn't exist
+    # 1. Initialize session state
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
 
-    # Check if the Supabase client already has an active session
-    if not st.session_state["authenticated"]:
-        if db.is_authenticated():
-            st.session_state["authenticated"] = True
-            return True
-        
-        # Show Login/Signup UI if no session is found
-        st.title("⚖️ Bridgevalue Technology Services")
-        tab1, tab2 = st.tabs(["Login", "Create Account"])
-        
-        with tab1:
-            with st.form("login"):
-                e = st.text_input("Email")
-                p = st.text_input("Password", type="password")
-                if st.form_submit_button("Login"):
+    # 2. If already authenticated in this session, skip login UI entirely
+    if st.session_state["authenticated"]:
+        return True
+
+    # 3. Check if Supabase has a persistent session (for browser refreshes)
+    if db.is_authenticated():
+        st.session_state["authenticated"] = True
+        st.rerun() # Clean transition to main app
+        return True
+    
+    # 4. If we reached here, the user IS NOT logged in. Show the UI.
+    st.title("⚖️ Bridgevalue Technology Services")
+    tab1, tab2 = st.tabs(["Login", "Create Account"])
+    
+    with tab1:
+        with st.form("login"):
+            e = st.text_input("Email")
+            p = st.text_input("Password", type="password")
+            if st.form_submit_button("Login"):
+                with st.spinner("Logging you in..."): # Feedback for user
                     success, msg = db.sign_in(e, p)
                     if success: 
                         st.session_state["authenticated"] = True
-                        st.rerun()
-                    else: st.error(msg)
-        
-        with tab2:
-            with st.form("signup"):
-                new_e = st.text_input("Email")
-                new_p = st.text_input("Password", type="password")
-                name = st.text_input("Full Name")
-                if st.form_submit_button("Sign Up"):
-                    success, msg = db.sign_up(new_e, new_p, name)
-                    if success: st.success("Account created! Please login.")
-                    else: st.error(msg)
-        return False
-    return True
+                        st.success("Authenticated!")
+                        st.rerun() 
+                    else: 
+                        st.error(msg)
+    
+    with tab2:
+        with st.form("signup"):
+            new_e = st.text_input("Email")
+            new_p = st.text_input("Password", type="password")
+            name = st.text_input("Full Name")
+            if st.form_submit_button("Sign Up"):
+                success, msg = db.sign_up(new_e, new_p, name)
+                if success: st.success("Account created! Please login.")
+                else: st.error(msg)
+    
+    # Return False so main() knows NOT to run yet
+    return False
 
 # --- MAIN APP ---
 def main():
