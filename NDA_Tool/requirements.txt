@@ -1,0 +1,12 @@
+streamlit
+openai
+pdfplumber
+faiss-cpu
+pandas
+numpy
+regex
+python-docx
+fastapi
+uvicorn
+python-multipart
+python-dotenv

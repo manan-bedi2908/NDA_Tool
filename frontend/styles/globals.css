@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Main background - soft blue */
+  --background: #EDF5FF;
+
+  /* Text colors - refined for better readability */
+  --foreground: #0F172A;
+  --secondary-text: #475569;
+  --muted-text: #64748B;
+
+  /* Muted background */
+  --muted: #EDF5FF;
+
+  /* Primary accent - professional blue */
+  --primary-accent: #2563EB;
+  --primary-hover: #1D4ED8;
+  --primary-light: #DBEAFE;
+
+  /* Secondary accent - refined teal */
+  --secondary-accent: #0891B2;
+  --secondary-light: #CFFAFE;
+
+  /* Status colors - professional palette */
+  --warning: #F59E0B;
+  --warning-light: #FEF3C7;
+  --error: #DC2626;
+  --error-light: #FEE2E2;
+  --success: #059669;
+  --success-light: #D1FAE5;
+  --info: #3B82F6;
+  --info-light: #DBEAFE;
+
+  /* UI elements - refined borders and surfaces */
+  --border: #CBD5E1;
+  --border-light: #E2E8F0;
+  --surface: #FFFFFF;
+  --surface-hover: #F8FAFC;
+  --surface-secondary: #F1F5F9;
+
+  /* Shadows - subtle and professional */
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.1), 0 4px 6px -2px rgba(15, 23, 42, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 10px 10px -5px rgba(15, 23, 42, 0.04);
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Hide scrollbar for all elements while maintaining functionality */
+body,
+html,
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+body::-webkit-scrollbar,
+html::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* Specific class to re-enable a clean, thin scrollbar */
+.has-scrollbar {
+  scrollbar-width: thin !important;
+  scrollbar-color: #94A3B8 transparent !important;
+  -ms-overflow-style: auto !important;
+}
+
+.has-scrollbar::-webkit-scrollbar {
+  display: block !important;
+  width: 5px !important;
+}
+
+.has-scrollbar::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.has-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #94A3B8 !important;
+  border-radius: 10px !important;
+}
+
+.has-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #64748B !important;
+}
